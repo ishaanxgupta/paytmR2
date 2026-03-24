@@ -1,5 +1,8 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:flutter/foundation.dart';
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../models/payment_token.dart';
 import '../models/transaction.dart';
 import '../config/constants.dart';
@@ -17,6 +20,20 @@ class OfflineStorage {
   }
 
   Future<Database> _initDB() async {
+    if (kIsWeb) {
+      databaseFactory = databaseFactoryFfiWeb;
+      return await openDatabase(
+        AppConstants.dbName,
+        version: AppConstants.dbVersion,
+        onCreate: _createTables,
+      );
+    }
+    
+    if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.macOS || defaultTargetPlatform == TargetPlatform.windows || defaultTargetPlatform == TargetPlatform.linux)) {
+       sqfliteFfiInit();
+       databaseFactory = databaseFactoryFfi;
+    }
+
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, AppConstants.dbName);
 

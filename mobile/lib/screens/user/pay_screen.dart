@@ -339,11 +339,11 @@ class _PayScreenState extends State<PayScreen> {
                         size: 220,
                         backgroundColor: Colors.white,
                         eyeStyle: const QrEyeStyle(
-                          eyeShape: QrEyeShape.roundedOuter,
+                          eyeShape: QrEyeShape.circle,
                           color: AppTheme.primaryColor,
                         ),
                         dataModuleStyle: const QrDataModuleStyle(
-                          dataModuleShape: QrDataModuleShape.roundedOutside,
+                          dataModuleShape: QrDataModuleShape.circle,
                           color: AppTheme.primaryColor,
                         ),
                       ),

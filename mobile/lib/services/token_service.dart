@@ -87,11 +87,18 @@ class TokenService {
 
   /// Get total available offline balance
   Future<double> getAvailableOfflineBalance() async {
-    final tokens = await getActiveTokens();
-    return tokens
-        .where((t) => t.isValid)
-        .fold(0.0, (sum, t) => sum + t.amount);
+  final tokens = await getActiveTokens();
+
+  double total = 0.0;
+
+  for (var t in tokens) {
+    if (t.isValid) {
+      total += t.amount;
+    }
   }
+
+  return total;
+}
 
   /// Fetch active tokens from server (needs connectivity)
   Future<List<PaymentToken>> fetchActiveTokensFromServer() async {

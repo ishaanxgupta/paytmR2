@@ -29,12 +29,36 @@ def reconcile_transaction(db: Session, tx_data: dict) -> dict:
     amount = tx_data["amount"]
     signature = tx_data["signature"]
 
-    # 1. Idempotency check - skip if already processed
+    # 1. Idempotency check - skip if already processed or credit receiver if we now know who it is
     existing_tx = db.query(Transaction).filter(
         Transaction.token_id == token_id,
         Transaction.nonce == nonce,
     ).first()
     if existing_tx:
+        # If the transaction was synced by sender first (no receiver_id),
+        # but now the merchant is syncing (has receiver_id), we need to credit them!
+        if existing_tx.receiver_id is None and receiver_id:
+            receiver = db.query(User).filter(User.id == receiver_id).first()
+            if receiver:
+                receiver.balance += amount
+                existing_tx.receiver_id = receiver_id
+                existing_tx.merchant_name = tx_data.get("receiver_name") or existing_tx.merchant_name
+                
+                credit_entry = LedgerEntry(
+                    user_id=receiver_id,
+                    transaction_id=existing_tx.id,
+                    entry_type="credit",
+                    amount=amount,
+                    balance_after=receiver.balance,
+                )
+                db.add(credit_entry)
+                db.commit()
+                return {
+                    "status": "settled",
+                    "message": "Transaction updated with merchant info",
+                    "transaction_id": existing_tx.id,
+                }
+                
         return {
             "status": "duplicate",
             "message": "Transaction already processed",
@@ -56,26 +80,28 @@ def reconcile_transaction(db: Session, tx_data: dict) -> dict:
         OfflineToken.token_id == token_id,
     ).first()
 
-    if original_token:
-        payload = {
-            "token_id": original_token.token_id,
-            "user_id": original_token.user_id,
-            "amount": original_token.amount,
-            "issued_at": original_token.issued_at.isoformat(),
-            "expires_at": original_token.expires_at.isoformat(),
-            "nonce": original_token.nonce,
-        }
+    if not original_token:
+        return {"status": "failed", "message": "Original token not found"}
 
-        if not verify_token_signature(payload, original_token.signature):
-            return {"status": "failed", "message": "Token signature verification failed"}
+    payload = {
+        "token_id": original_token.token_id,
+        "user_id": original_token.user_id,
+        "amount": original_token.amount,
+        "issued_at": original_token.issued_at.isoformat(),
+        "expires_at": original_token.expires_at.isoformat(),
+        "nonce": original_token.nonce,
+    }
 
-        # 3. Validate token status
-        if original_token.status == TokenStatus.CONSUMED:
-            return {"status": "failed", "message": "Token already consumed"}
-        if original_token.status == TokenStatus.REVOKED:
-            return {"status": "failed", "message": "Token has been revoked"}
-        if amount > original_token.amount:
-            return {"status": "failed", "message": f"Amount {amount} exceeds token limit {original_token.amount}"}
+    if not verify_token_signature(payload, original_token.signature):
+        return {"status": "failed", "message": "Token signature verification failed"}
+
+    # 3. Validate token status
+    if original_token.status == TokenStatus.CONSUMED:
+        return {"status": "failed", "message": "Token already consumed"}
+    if original_token.status == TokenStatus.REVOKED:
+        return {"status": "failed", "message": "Token has been revoked"}
+    if amount > original_token.amount:
+        return {"status": "failed", "message": f"Amount {amount} exceeds token limit {original_token.amount}"}
 
     # 4. Fraud checks
     is_suspicious, fraud_reasons = check_fraud_signals(db, sender_id, amount, nonce)
@@ -138,6 +164,7 @@ def reconcile_transaction(db: Session, tx_data: dict) -> dict:
         settled_at=datetime.utcnow(),
     )
     db.add(tx)
+    db.flush()
 
     # 6. Ledger entries
     debit_entry = LedgerEntry(
