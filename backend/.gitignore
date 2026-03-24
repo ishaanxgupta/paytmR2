@@ -26,8 +26,6 @@ env/
 *.sqlite
 *.sqlite3
 
-# ML Model (large binary - regenerated on startup)
-ml_model/
 
 # Cryptographic keys (NEVER commit private keys)
 keys/ed25519.priv
