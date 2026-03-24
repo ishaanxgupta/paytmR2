@@ -1,6 +1,16 @@
 import os
+import sys
 import numpy as np
 from ..config import ML_MODEL_PATH, MAX_OFFLINE_LIMIT, MIN_OFFLINE_LIMIT
+
+# Polyfill Kaggle-trained custom ensemble class into __main__ so joblib can run it
+from sklearn.ensemble import VotingClassifier
+class VotingLGBMEnsemble(VotingClassifier):
+    @property
+    def feature_importances_(self):
+        return np.mean([est.feature_importances_ for est in self.estimators_], axis=0)
+
+setattr(sys.modules['__main__'], 'VotingLGBMEnsemble', VotingLGBMEnsemble)
 
 # Try to load the trained model; fall back to heuristic if not available
 _model = None
